@@ -1,0 +1,1 @@
+lançar parcelamentos, por exemplo comprei tal coisa no dia tal em 24x de 411 e aí ter uma previsibilidade de lançamentos futuros, porcentagem do total pago, quantas parcelas faltam, o quanto parcelas recorrentes estão impactando no gasto total do mês
