@@ -199,14 +199,42 @@ input:focus,select:focus{outline:none;border-color:#2563eb}
 .btn-del-item:hover{background:#fee2e2;color:#dc2626}
 .btn-danger{width:100%;padding:12px;background:#fee2e2;border:none;border-radius:10px;color:#dc2626;font-size:14px;font-weight:600;cursor:pointer;font-family:inherit}
 .btn-danger:hover{background:#fecaca}
+/* ONBOARDING */
+.onboarding-overlay{position:fixed;inset:0;background:#fff;z-index:500;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:32px 28px;text-align:center}
+.onboarding-overlay.hidden{display:none}
+.onboarding-logo{font-size:48px;margin-bottom:20px}
+.onboarding-title{font-size:26px;font-weight:700;margin-bottom:8px;color:#1a1a1a}
+.onboarding-sub{font-size:15px;color:#888;margin-bottom:36px;line-height:1.6}
+.onboarding-input{width:100%;padding:14px 16px;border:1.5px solid #d1d5db;border-radius:12px;font-size:16px;font-family:inherit;text-align:center;margin-bottom:14px;color:#1a1a1a}
+.onboarding-input:focus{outline:none;border-color:#2563eb}
+.onboarding-btn{width:100%;padding:14px;background:#2563eb;border:none;border-radius:12px;color:#fff;font-size:16px;font-weight:700;cursor:pointer;font-family:inherit;margin-bottom:10px}
+.onboarding-btn:hover{background:#1d4ed8}
+.onboarding-skip{font-size:13px;color:#94a3b8;background:none;border:none;cursor:pointer;font-family:inherit;padding:4px}
+/* PERFIL no header */
+.avatar{cursor:pointer}
+.avatar:hover{opacity:.8}
+/* RESET MODAL */
+.reset-section{margin-top:20px;padding-top:16px;border-top:1px solid #f0f0f0}
+.reset-section-title{font-size:12px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
 </style>
 </head>
 <body>
 <div id="toast" class="toast"></div>
+
+<!-- TELA DE BOAS-VINDAS -->
+<div class="onboarding-overlay" id="onboarding">
+  <div class="onboarding-logo">💰</div>
+  <div class="onboarding-title">Meu Dinheiro</div>
+  <div class="onboarding-sub">Seu app de controle financeiro pessoal.<br>Simples, claro e só seu.</div>
+  <input class="onboarding-input" id="ob-nome" type="text" placeholder="Qual é o seu nome?" maxlength="30" onkeydown="if(event.key==='Enter')startApp()">
+  <button class="onboarding-btn" onclick="startApp()">Começar →</button>
+  <button class="onboarding-skip" onclick="startApp(true)">Pular e começar sem nome</button>
+</div>
+
 <div class="app">
   <div class="header">
     <h1>Meu Dinheiro</h1>
-    <div class="avatar">JS</div>
+    <div class="avatar" id="avatar-btn" onclick="openPerfil()" title="Perfil">?</div>
   </div>
 
   <!-- DASHBOARD -->
@@ -1676,62 +1704,123 @@ async function fetchIndicators(){
   }
 }
 
+/* ── PERSISTÊNCIA localStorage ── */
+const STORAGE_KEY='meu_dinheiro_v1';
+
+function saveState(){
+  try{localStorage.setItem(STORAGE_KEY,JSON.stringify({state,user:window._user||null}));}
+  catch(e){}
+}
+function loadState(){
+  try{
+    const raw=localStorage.getItem(STORAGE_KEY);
+    if(!raw)return false;
+    const saved=JSON.parse(raw);
+    if(saved.state){
+      Object.assign(state,{
+        gastos:[],investimentos:[],metas:[],parcelamentos:[],contas:[],saldo_base:5800,
+        ...saved.state
+      });
+    }
+    if(saved.user)window._user=saved.user;
+    return true;
+  }catch(e){return false;}
+}
+
+// patch all mutating functions to auto-save
+const _orig={addGasto,addInv,addMeta,addConta,deleteConta,togglePaga,saveEditValor,
+  deleteGasto,saveGasto,deleteInv,saveInv,deleteMeta,saveMeta,
+  deleteParc,saveParc,addParcelamento,updateMetaAtual,marcaPaga};
+
+function wrapSave(fn){return function(...a){fn.apply(this,a);saveState();};}
+// We'll call saveState() at the end of each mutating action directly instead.
+
+/* ── ONBOARDING & PERFIL ── */
+function initials(name){
+  if(!name)return '?';
+  const parts=name.trim().split(' ').filter(Boolean);
+  if(parts.length>=2)return(parts[0][0]+parts[parts.length-1][0]).toUpperCase();
+  return parts[0].substring(0,2).toUpperCase();
+}
+function applyUser(name){
+  window._user={name};
+  const av=document.getElementById('avatar-btn');
+  if(av)av.textContent=initials(name);
+}
+
+function startApp(skip){
+  const nome=skip?'':document.getElementById('ob-nome').value.trim();
+  const name=nome||'Usuário';
+  applyUser(name);
+  document.getElementById('onboarding').classList.add('hidden');
+  saveState();
+}
+
+function openPerfil(){
+  const user=window._user||{name:'Usuário'};
+  openModal('Meu perfil',`
+    <div class="form-group">
+      <label class="form-label">Seu nome</label>
+      <input id="perf-nome" type="text" value="${user.name.replace(/"/g,'&quot;')}" maxlength="30">
+    </div>
+    <div class="reset-section">
+      <div class="reset-section-title">Zona de perigo</div>
+      <button class="btn-danger" style="margin-bottom:8px" onclick="confirmReset()">🗑 Apagar todos os dados</button>
+      <p style="font-size:12px;color:#aaa;text-align:center">Isso remove todos os lançamentos, metas,<br>investimentos e contas salvos.</p>
+    </div>`,
+    `<button class="btn-primary" onclick="savePerfil()">Salvar nome</button>
+     <button class="btn-secondary" onclick="closeModal()">Fechar</button>`);
+}
+function savePerfil(){
+  const nome=document.getElementById('perf-nome').value.trim();
+  if(nome)applyUser(nome);
+  saveState();
+  closeModal();
+  showToast('Nome atualizado!');
+}
+function confirmReset(){
+  closeModal();
+  openModal('Apagar todos os dados?',`
+    <p style="font-size:14px;color:#555;line-height:1.7;margin-bottom:8px">
+      Todos os seus gastos, investimentos, metas, parcelamentos e contas serão removidos permanentemente.<br><br>
+      <strong>Essa ação não pode ser desfeita.</strong>
+    </p>`,
+    `<button class="btn-danger" onclick="resetAll()">Sim, apagar tudo</button>
+     <button class="btn-secondary" onclick="closeModal()">Cancelar</button>`);
+}
+function resetAll(){
+  localStorage.removeItem(STORAGE_KEY);
+  closeModal();
+  showToast('Dados apagados. Recarregando...');
+  setTimeout(()=>location.reload(),1200);
+}
+
+/* ── INIT ── */
 document.getElementById('g-data').value=new Date().toISOString().split('T')[0];
 document.getElementById('p-inicio').value=new Date().toISOString().substring(0,7);
-state.gastos=[
-  {val:420,cat:'Alimentação',data:new Date().toISOString().split('T')[0],desc:'Supermercado',tipo:'gasto'},
-  {val:180,cat:'Transporte',data:new Date().toISOString().split('T')[0],desc:'Uber',tipo:'gasto'},
-  {val:1200,cat:'Moradia',data:new Date().toISOString().split('T')[0],desc:'Aluguel',tipo:'gasto'},
-];
-state.investimentos=[
-  {tipo:'CDB',val:2000,rend:'cdi',taxa:110,rendAnual:2000*1.10*(CDI/100)},
-  {tipo:'Tesouro Direto',val:1500,rend:'fixo',taxa:13,rendAnual:1500*0.13},
-];
-state.metas=[
-  {nome:'Reserva de emergência',alvo:15000,atual:3500,atual_inicial:2000,prazo:'2026-12',taxaAnual:CDI,dataCriacao:'2026-01-01'},
-  {nome:'Viagem Europa',alvo:8000,atual:1200,atual_inicial:1200,prazo:'2027-06',taxaAnual:13,dataCriacao:new Date().toISOString().split('T')[0]},
-];
-// demo: parcelamentos com datas relativas ao mês atual
-(function(){
-  const now=new Date();
-  const pad=n=>String(n).padStart(2,'0');
-  const ym=(y,m)=>`${y}-${pad(m+1)}`;
-  const cur=ym(now.getFullYear(),now.getMonth());
-  const m3ago=new Date(now.getFullYear(),now.getMonth()-3);
-  const m1ago=new Date(now.getFullYear(),now.getMonth()-1);
-  state.parcelamentos=[
-    {nome:'Notebook Dell',total:9864,n:24,parcela:411,dia:10,inicio:ym(m3ago.getFullYear(),m3ago.getMonth()),cat:'Eletrônicos',pagas:3},
-    {nome:'Sofá 3 lugares',total:3588,n:12,parcela:299,dia:15,inicio:ym(m1ago.getFullYear(),m1ago.getMonth()),cat:'Móveis',pagas:1},
-    {nome:'Celular Samsung',total:2400,n:6,parcela:400,dia:5,inicio:cur,cat:'Eletrônicos',pagas:0},
-  ];
-})();
-// demo: contas recorrentes
-(function(){
-  const ym=curYM();
-  const ymPrev=(()=>{const d=new Date();d.setMonth(d.getMonth()-1);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;})();
-  const ymPrev2=(()=>{const d=new Date();d.setMonth(d.getMonth()-2);return`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;})();
-  state.contas=[
-    {nome:'Conta de luz',valorPadrao:180,dia:10,cat:'Energia',periodo:'mensal',ativo:true,inicio:ymPrev2,historico:[
-      {mes:ymPrev2,valor:162,paga:true},{mes:ymPrev,valor:195,paga:true},{mes:ym,valor:210,paga:false}
-    ]},
-    {nome:'Conta de água',valorPadrao:85,dia:15,cat:'Água',periodo:'bimestral',ativo:true,inicio:ymPrev2,historico:[
-      {mes:ymPrev2,valor:82,paga:true},{mes:ym,valor:85,paga:false}
-    ]},
-    {nome:'Internet',valorPadrao:120,dia:5,cat:'Internet',periodo:'mensal',ativo:true,inicio:ymPrev2,historico:[
-      {mes:ymPrev2,valor:120,paga:true},{mes:ymPrev,valor:120,paga:true},{mes:ym,valor:120,paga:true}
-    ]},
-    {nome:'Plano celular',valorPadrao:75,dia:20,cat:'Telefone',periodo:'mensal',ativo:true,inicio:ymPrev2,historico:[
-      {mes:ymPrev2,valor:75,paga:true},{mes:ymPrev,valor:75,paga:true},{mes:ym,valor:89,paga:false}
-    ]},
-    {nome:'Condomínio',valorPadrao:420,dia:10,cat:'Condomínio',periodo:'mensal',ativo:true,inicio:ymPrev2,historico:[
-      {mes:ymPrev2,valor:420,paga:true},{mes:ymPrev,valor:420,paga:true},{mes:ym,valor:420,paga:false}
-    ]},
-    {nome:'Gás',valorPadrao:55,dia:18,cat:'Gás',periodo:'bimestral',ativo:true,inicio:ymPrev2,historico:[
-      {mes:ymPrev2,valor:48,paga:true},{mes:ym,valor:55,paga:false}
-    ]},
-  ];
-})();
-renderGastos();renderInv();renderMetas();renderParcelamentos();renderContas();updateDash();fetchIndicators();
+
+const hasSaved=loadState();
+
+if(hasSaved&&window._user){
+  // usuário já configurado — vai direto pro app
+  applyUser(window._user.name);
+  document.getElementById('onboarding').classList.add('hidden');
+  renderGastos();renderInv();renderMetas();renderParcelamentos();renderContas();updateDash();fetchIndicators();
+} else {
+  // primeira vez — mostra onboarding, app começa zerado
+  document.getElementById('ob-nome').focus();
+  // ainda renderiza tudo (vazio) para estar pronto após startApp
+  renderGastos();renderInv();renderMetas();renderParcelamentos();renderContas();updateDash();fetchIndicators();
+}
+
+// auto-save em todas as ações de mutação
+['addGasto','addInv','addMeta','addConta','deleteConta','togglePaga',
+ 'deleteGasto','saveGasto','deleteInv','saveInv','deleteMeta','saveMeta',
+ 'deleteParc','saveParc','addParcelamento','updateMetaAtual','marcaPaga',
+ 'saveEditValor','confirmImport'].forEach(fn=>{
+  const orig=window[fn];
+  if(typeof orig==='function')window[fn]=function(...a){orig.apply(this,a);saveState();};
+});
 </script>
 </body>
 </html>
